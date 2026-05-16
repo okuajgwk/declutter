@@ -12,7 +12,7 @@ type Props = {
   nodes: CognitiveNode[];
   onClose: () => void;
   onWeightChange: (id: string, newWeight: number) => void;
-  onClassify: (id: string, category: Category, mental_weight: number, confidence: number) => void;
+  onClassify: (id: string, category: Category, mental_weight: number) => void;
 };
 
 export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props) {
@@ -26,15 +26,11 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
 
   useEffect(() => {
     if (nodes.length > 0) {
-      let initialMessage = "";
-      if (nodes.length === 1 && nodes[0].clarifying_questions && nodes[0].clarifying_questions.length > 0) {
-        initialMessage = nodes[0].clarifying_questions[0];
-      } else {
-        const titles = nodes.map(n => `"${n.title}"`).join(", ");
-        initialMessage = `Let's sit with ${nodes.length === 1 ? 'this thought' : 'these thoughts'} for a moment: ${titles}. What about ${nodes.length === 1 ? 'it is' : 'them is'} taking up the most space right now?`;
-      }
-      setMessages([{ role: "assistant", content: initialMessage }]);
+      setMessages([]);
       setInput("");
+      setTimeout(() => {
+        send(true);
+      }, 0);
     } else {
       if (esRef.current) {
         esRef.current.close();
@@ -43,11 +39,14 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
     }
   }, [nodeIds]);
 
-  const send = async () => {
+  const send = async (autoStart = false) => {
     const t = input.trim();
-    if (!t || streaming || nodes.length === 0) return;
+    if ((autoStart ? streaming : (!t || streaming)) || nodes.length === 0) return;
     
-    const next: CoachMessage[] = [...messages, { role: "user", content: t }, { role: "assistant", content: "" }];
+    const startPrompt = "Start by asking your first, most relevant question about these nodes.";
+    const next: CoachMessage[] = autoStart
+      ? [{ role: "user", content: startPrompt }, { role: "assistant", content: "" }]
+      : [...messages, { role: "user", content: t }, { role: "assistant", content: "" }];
     setMessages(next);
     setInput("");
     setStreaming(true);
@@ -71,7 +70,6 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
           baseline_weight: node.baseline_weight,
           category: node.category,
           control_scope: node.control_scope,
-          confidence: node.confidence,
         })),
         messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
       }),
@@ -100,7 +98,7 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
           ]);
         } else if (chunk.type === "tool" && chunk.name === "classifyNode") {
           const { nodeId, category, mental_weight, reason } = chunk.args;
-          onClassify(nodeId, category, mental_weight, 1.0);
+          onClassify(nodeId, category, mental_weight);
           setMessages((prev) => [
             ...prev,
             { role: "assistant", content: `✦ Finalized: ${category} @ ${mental_weight}/10 — ${reason}` },
@@ -152,7 +150,7 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
                 <View key={node.id} style={[styles.weightBadge, { 
                   backgroundColor: CATEGORY_BG[node.category],
                   borderColor: CATEGORY_FG[node.category],
-                  borderStyle: node.confidence < 0.95 ? 'dashed' : 'solid',
+                  borderStyle: 'solid',
                 }]}>
                   <Text style={[styles.weightText, { color: CATEGORY_FG[node.category] }]}>
                     {node.mental_weight}

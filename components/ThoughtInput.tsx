@@ -11,9 +11,7 @@ type SiftedNode = {
   category: Category;
   mental_weight: number;
   baseline_weight: number;
-  confidence: number;
   control_scope: "control" | "influence" | "chaos";
-  clarifying_questions?: string[];
 };
 
 type Props = {

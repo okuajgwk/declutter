@@ -15,9 +15,7 @@ function makeNode(partial: {
   category: Category;
   mental_weight: number;
   baseline_weight: number;
-  confidence: number;
   control_scope: "control" | "influence" | "chaos";
-  clarifying_questions?: string[];
 }): CognitiveNode {
   const spawnX = 200;
   const spawnY = 400;
@@ -30,10 +28,8 @@ function makeNode(partial: {
     category: partial.category,
     mental_weight: partial.mental_weight,
     baseline_weight: partial.baseline_weight,
-    confidence: partial.confidence,
     control_scope: partial.control_scope,
-    clarifying_questions: partial.clarifying_questions,
-    status: partial.confidence < 0.95 ? "pending" : "active",
+    status: "active",
     x: spawnX,
     y: spawnY,
     vx: (targetX - spawnX) * 0.012,
@@ -61,26 +57,25 @@ const addSingle = (text: string) => {
       category: cat,
       mental_weight: weight,
       baseline_weight: weight,
-      confidence: 1.0, // Manual entries are certain
       control_scope: "control",
     }),
   ]);
 };
 
-const addSifted = (nodes: { title: string; original_thought: string; category: Category; mental_weight: number; baseline_weight: number; confidence: number; control_scope: "control" | "influence" | "chaos"; clarifying_questions?: string[] }[]) => {
-  setBubbles((prev) => [
-    ...prev,
-    ...nodes.map((n) => {
-      const baseline = n.baseline_weight || n.mental_weight;
-      const demotedWeight = n.control_scope === "chaos" ? Math.max(1, baseline - 2) : n.mental_weight;
-      return makeNode({
-        ...n,
-        baseline_weight: baseline,
-        mental_weight: demotedWeight,
-      });
-    }),
-  ]);
-};
+  const addSifted = (nodes: { title: string; original_thought: string; category: Category; mental_weight: number; baseline_weight: number; control_scope: "control" | "influence" | "chaos" }[]) => {
+    setBubbles((prev) => [
+      ...prev,
+      ...nodes.map((n) => {
+        const baseline = n.baseline_weight || n.mental_weight;
+        const demotedWeight = n.control_scope === "chaos" ? Math.max(1, baseline - 2) : n.mental_weight;
+        return makeNode({
+          ...n,
+          baseline_weight: baseline,
+          mental_weight: demotedWeight,
+        });
+      }),
+    ]);
+  };
 
   const updateWeight = (id: string, newWeight: number) => {
     setBubbles((prev) => prev.map((b) => {
@@ -93,9 +88,9 @@ const addSifted = (nodes: { title: string; original_thought: string; category: C
     }));
   };
 
-  const classifyNode = (id: string, category: Category, mental_weight: number, confidence: number) => {
+  const classifyNode = (id: string, category: Category, mental_weight: number) => {
     setBubbles((prev) => prev.map((b) => (
-      b.id === id ? { ...b, category, mental_weight, confidence, status: confidence >= 0.95 ? "active" : b.status } : b
+      b.id === id ? { ...b, category, mental_weight } : b
     )));
   };
 
@@ -168,12 +163,12 @@ const addSifted = (nodes: { title: string; original_thought: string; category: C
       )}
 
       {isCoachOpen && (
-        <CoachSheet
-          nodes={selectedNodes}
-          onClose={closeCoach}
-          onWeightChange={updateWeight}
-          onClassify={classifyNode}
-        />
+      <CoachSheet
+        nodes={selectedNodes}
+        onClose={closeCoach}
+        onWeightChange={updateWeight}
+        onClassify={classifyNode}
+      />
       )}
     </SafeAreaView>
   );

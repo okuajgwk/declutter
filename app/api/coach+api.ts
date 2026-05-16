@@ -1,26 +1,26 @@
 import { streamText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { createOpenRouterProvider } from "../../lib/open-router";
+import { createOpenRouterProvider, hasOpenRouterApiKey } from "../../lib/open-router";
 
 const COACH_SYSTEM = (nodes: any[]) => `You are a calm, empathetic cognitive behavioral coach. The user has surfaced these thoughts:
 
-${nodes.map(n => `ID: ${n.id}\nTitle: "${n.title}"\nOriginal: "${n.original_thought}"\nCategory: ${n.category}\nControl scope: ${n.control_scope}\nBaseline mental weight: ${n.baseline_weight}/10\nCurrent mental weight: ${n.mental_weight}/10\nConfidence: ${n.confidence}`).join('\n\n')}
+${nodes.map(n => `ID: ${n.id}\nTitle: "${n.title}"\nOriginal: "${n.original_thought}"\nCategory: ${n.category}\nControl scope: ${n.control_scope}\nBaseline mental weight: ${n.baseline_weight}/10\nCurrent mental weight: ${n.mental_weight}/10`).join('\n\n')}
 
 Your job:
 - Ask Socratic, grounding questions. Do NOT generate to-do lists.
 - Challenge catastrophizing language gently. Help them separate what is in their control vs external.
 - Keep replies short (1-3 sentences). One question at a time.
-- **Classification Flow**: Some nodes have low confidence (< 0.95) and appear with dashed outlines. These are unclassified/pending. Prioritize asking clarifying questions about these nodes to gather enough info to properly categorize and weigh them.
+- Do not use a generic opening; start with the most relevant question for the selected nodes.
 - **Control vs Chaos**: If a node is chaos, guide the user toward actionable micro-steps and a lighter perceived weight without invalidating their concern.
 - When the user has a real reframe, breakthrough, or rationalization that genuinely lowers the felt weight, call the updateNodeWeight tool.
-- When a low-confidence node is clarified with absolute certainty, call the classifyNode tool to finalize its category and weight. This will push its confidence to 1.0 and make its outline solid.`;
+- When a node is clarified with certainty, call the classifyNode tool to finalize its category and weight.`;
 
 export async function POST(req: Request) {
   try {
     const { nodes, messages } = await req.json();
 
-    if (!process.env.OPENROUTER_API_KEY) {
-      return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY missing" }), { 
+    if (!hasOpenRouterApiKey()) {
+      return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY missing or empty" }), { 
         status: 500,
         headers: {
           "Content-Type": "application/json",
@@ -48,14 +48,14 @@ export async function POST(req: Request) {
         execute: async ({ nodeId, newWeight, reason }) => ({ ok: true, nodeId, newWeight, reason }),
       }),
       classifyNode: tool({
-        description: "Finalize the classification and weight of a pending (low confidence) node.",
+        description: "Finalize the classification and weight of a node.",
         inputSchema: z.object({
           nodeId: z.string().describe("The ID of the node to classify"),
           category: z.enum(["sage", "slate", "rose", "amber", "lavender"]),
           mental_weight: z.number().int().min(1).max(10),
           reason: z.string().max(160),
         }),
-        execute: async ({ nodeId, category, mental_weight, reason }) => ({ ok: true, nodeId, category, mental_weight, reason, confidence: 1.0 }),
+        execute: async ({ nodeId, category, mental_weight, reason }) => ({ ok: true, nodeId, category, mental_weight, reason }),
       }),
     };
 
