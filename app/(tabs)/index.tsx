@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Modal } from "react-native";
 import { BlurView } from "expo-blur";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,6 +9,7 @@ import { categorize, type Category } from "../../lib/categorize";
 import type { CognitiveNode } from "../../lib/types";
 import { StatusBar } from "expo-status-bar";
 import { MessageCircle, Plus } from "lucide-react-native";
+import Constants from "expo-constants";
 
 function makeNode(partial: {
   title: string;
@@ -17,6 +18,7 @@ function makeNode(partial: {
   mental_weight: number;
   baseline_weight: number;
   control_scope: "control" | "influence" | "chaos";
+  processing_state?: "pending" | "done" | "failed";
 }): CognitiveNode {
   const spawnX = 200;
   const spawnY = 400;
@@ -31,6 +33,7 @@ function makeNode(partial: {
     baseline_weight: partial.baseline_weight,
     control_scope: partial.control_scope,
     status: "active",
+    processing_state: partial.processing_state,
     x: spawnX,
     y: spawnY,
     vx: (targetX - spawnX) * 0.012,
@@ -46,22 +49,95 @@ export default function Index() {
   const [isCoachOpen, setIsCoachOpen] = useState(false);
   const [aqScore, setAqScore] = useState(50);
   const [pivotCompleted, setPivotCompleted] = useState(false);
+  const [burstQueue, setBurstQueue] = useState<{ id: string; text: string; attempts: number }[]>([]);
+  const processingRef = useRef(false);
+  const apiUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const debuggerHost = Constants.expoConfig?.hostUri;
+    const localhost = debuggerHost?.split(":")[0] || "localhost";
+    apiUrlRef.current = process.env.EXPO_PUBLIC_API_URL || `http://${localhost}:8081`;
+  }, []);
+
+  useEffect(() => {
+    if (processingRef.current || burstQueue.length === 0) return;
+    processingRef.current = true;
+
+    const processNext = async () => {
+      const [current, ...rest] = burstQueue;
+      setBurstQueue(rest);
+      if (!current) {
+        processingRef.current = false;
+        return;
+      }
+      try {
+        const apiUrl = apiUrlRef.current || "";
+        const res = await fetch(`${apiUrl}/api/classify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: current.text }),
+        });
+        if (!res.ok) throw new Error("Failed to classify");
+        const result = await res.json();
+        const node = result?.node;
+        if (node) {
+          setBubbles((prev) => prev.map((b) => {
+            if (b.id !== current.id) return b;
+            const baseline = node.baseline_weight || node.mental_weight;
+            const demotedWeight = node.control_scope === "chaos" ? Math.max(1, baseline - 2) : node.mental_weight;
+            return {
+              ...b,
+              title: node.title,
+              category: node.category,
+              control_scope: node.control_scope,
+              baseline_weight: baseline,
+              mental_weight: demotedWeight,
+              processing_state: "done",
+            };
+          }));
+        } else {
+          throw new Error("Missing classification");
+        }
+      } catch (err) {
+        const attempts = current.attempts + 1;
+        if (attempts <= 1) {
+          setBurstQueue((prev) => [...prev, { ...current, attempts }]);
+        } else {
+          setBubbles((prev) => prev.map((b) => (
+            b.id === current.id ? { ...b, processing_state: "failed" } : b
+          )));
+        }
+      } finally {
+        setTimeout(() => {
+          processingRef.current = false;
+        }, 250);
+      }
+    };
+
+    processNext();
+  }, [burstQueue]);
   const [isTipOpen, setIsTipOpen] = useState(false);
 
 const addSingle = (text: string) => {
   const cat = categorize(text);
   const weight = 5;
+  const id = String(Date.now()) + Math.random().toString(36).slice(2);
   setBubbles((prev) => [
     ...prev,
-    makeNode({
-      title: text.length > 36 ? text.slice(0, 34) + "…" : text,
-      original_thought: text,
-      category: cat,
-      mental_weight: weight,
-      baseline_weight: weight,
-      control_scope: "control",
-    }),
+    {
+      ...makeNode({
+        title: text.length > 36 ? text.slice(0, 34) + "…" : text,
+        original_thought: text,
+        category: cat,
+        mental_weight: weight,
+        baseline_weight: weight,
+        control_scope: "control",
+        processing_state: "pending",
+      }),
+      id,
+    },
   ]);
+  setBurstQueue((prev) => [...prev, { id, text, attempts: 0 }]);
 };
 
   const addSifted = (nodes: { title: string; original_thought: string; category: Category; mental_weight: number; baseline_weight: number; control_scope: "control" | "influence" | "chaos" }[]) => {

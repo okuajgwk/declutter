@@ -22,6 +22,9 @@ const CALM_FG: Record<string, string> = {
   lavender: "#8B7BB5",
 };
 
+const PROCESSING_FG = "#5B6B7A";
+const PROCESSING_BG = "rgba(91, 107, 122, 0.12)";
+
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
 const hexToRgb = (hex: string) => {
@@ -305,7 +308,10 @@ function BubbleItem({
   const heavy = node.mental_weight >= 7;
   const calmTarget = CALM_FG[node.category] || CATEGORY_FG[node.category];
   const deflationProgress = clamp(1 - node.mental_weight / Math.max(1, node.baseline_weight));
-  const borderTone = mixColor(CATEGORY_FG[node.category], calmTarget, deflationProgress);
+  const baseTone = mixColor(CATEGORY_FG[node.category], calmTarget, deflationProgress);
+  const isProcessing = node.processing_state === "pending";
+  const isFailed = node.processing_state === "failed";
+  const borderTone = isProcessing ? PROCESSING_FG : baseTone;
 
   return (
     <Animated.View
@@ -317,11 +323,11 @@ function BubbleItem({
           top: node.y - size / 2,
           width: size,
           height: size,
-          backgroundColor: isSelected ? 'rgba(0,0,0,0.05)' : 'transparent',
+          backgroundColor: isProcessing ? PROCESSING_BG : (isSelected ? 'rgba(0,0,0,0.05)' : 'transparent'),
           borderColor: borderTone,
           borderWidth: 2,
           borderStyle: 'solid',
-          opacity: CONTROL_OPACITY[node.control_scope],
+          opacity: isFailed ? 0.7 : CONTROL_OPACITY[node.control_scope],
           shadowColor: heavy ? borderTone : "#000",
           shadowOffset: { width: 0, height: heavy ? 6 : 4 },
           shadowOpacity: heavy ? 0.3 : 0.15,

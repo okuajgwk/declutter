@@ -3,7 +3,6 @@ import { z } from "zod";
 import { createOpenRouterProvider, hasOpenRouterApiKey } from "../../lib/open-router";
 
 const CategoryEnum = z.enum(["sage", "slate", "rose", "amber", "lavender"]);
-
 const ControlScopeEnum = z.enum(["control", "influence", "chaos"]);
 
 const NodeSchema = z.object({
@@ -15,12 +14,12 @@ const NodeSchema = z.object({
   control_scope: ControlScopeEnum,
 });
 
-const SiftSchema = z.object({
-  nodes: z.array(NodeSchema).min(0).max(20),
+const ClassifySchema = z.object({
+  node: NodeSchema,
 });
 
-const SIFT_SYSTEM = `You are a calm cognitive coach helping someone unload mental clutter.
-Read the user's brain dump and extract distinct "cognitive nodes" — separate worries, tasks, feelings, decisions.
+const CLASSIFY_SYSTEM = `You are a calm cognitive coach.
+Classify a single thought into category, control scope, and weight.
 
 **Control Scope Rules:**
 - control: directly actionable by the user right now.
@@ -35,14 +34,14 @@ Read the user's brain dump and extract distinct "cognitive nodes" — separate w
 - baseline_weight: the raw initial weight before any demotion or deflation.
 - control_scope: one of control, influence, chaos.
 
-Return only the structured nodes. Do not invent thoughts not present in the text.`;
+Return only the structured node. Do not invent thoughts not present in the text.`;
 
 export async function POST(req: Request) {
   try {
     const { text } = await req.json();
-    
+
     if (!hasOpenRouterApiKey()) {
-      return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY missing or empty" }), { 
+      return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY missing or empty" }), {
         status: 500,
         headers: {
           "Content-Type": "application/json",
@@ -70,9 +69,9 @@ export async function POST(req: Request) {
       try {
         const { experimental_output } = await generateText({
           model: openrouter(modelName),
-          system: SIFT_SYSTEM,
+          system: CLASSIFY_SYSTEM,
           prompt: text,
-          experimental_output: Output.object({ schema: SiftSchema }),
+          experimental_output: Output.object({ schema: ClassifySchema }),
         });
 
         return Response.json(experimental_output, {
@@ -94,8 +93,8 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error("sift API error:", error);
-    return new Response(JSON.stringify({ error: String(error) }), { 
+    console.error("classify API error:", error);
+    return new Response(JSON.stringify({ error: String(error) }), {
       status: 500,
       headers: {
         "Content-Type": "application/json",

@@ -9,6 +9,7 @@ export type CognitiveNode = {
   baseline_weight: number; // 1..10 (pre-demotion, pre-deflation)
   control_scope: "control" | "influence" | "chaos";
   status: "active" | "deflated" | "archived";
+  processing_state?: "pending" | "done" | "failed";
   // physics
   x: number;
   y: number;
