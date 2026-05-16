@@ -6,7 +6,11 @@ export type CognitiveNode = {
   original_thought: string;
   category: Category;
   mental_weight: number; // 1..10
-  status: "active" | "deflated" | "archived";
+  baseline_weight: number; // 1..10 (pre-demotion, pre-deflation)
+  confidence: number; // 0.0 to 1.0
+  control_scope: "control" | "influence" | "chaos";
+  clarifying_questions?: string[];
+  status: "active" | "pending" | "deflated" | "archived";
   // physics
   x: number;
   y: number;

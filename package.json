@@ -11,8 +11,8 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^2.0.47",
     "@expo/vector-icons": "^15.0.3",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",

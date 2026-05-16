@@ -3,31 +3,37 @@ import { View, Text, TextInput, Pressable, StyleSheet, Modal, ScrollView, Activi
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Send, Sparkles } from "lucide-react-native";
 import EventSource from "react-native-sse";
+import Constants from "expo-constants";
 import { CATEGORY_BG, CATEGORY_FG } from "../lib/categorize";
+import type { Category } from "../lib/categorize";
 import type { CognitiveNode, CoachMessage } from "../lib/types";
 
 type Props = {
   nodes: CognitiveNode[];
   onClose: () => void;
   onWeightChange: (id: string, newWeight: number) => void;
+  onClassify: (id: string, category: Category, mental_weight: number, confidence: number) => void;
 };
 
-export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
+export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props) {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const esRef = useRef<EventSource | null>(null);
 
+  const nodeIds = nodes.map(n => n.id).sort().join(',');
+
   useEffect(() => {
     if (nodes.length > 0) {
-      const titles = nodes.map(n => `"${n.title}"`).join(", ");
-      setMessages([
-        {
-          role: "assistant",
-          content: `Let's sit with ${nodes.length === 1 ? 'this thought' : 'these thoughts'} for a moment: ${titles}. What about ${nodes.length === 1 ? 'it is' : 'them is'} taking up the most space right now?`,
-        },
-      ]);
+      let initialMessage = "";
+      if (nodes.length === 1 && nodes[0].clarifying_questions && nodes[0].clarifying_questions.length > 0) {
+        initialMessage = nodes[0].clarifying_questions[0];
+      } else {
+        const titles = nodes.map(n => `"${n.title}"`).join(", ");
+        initialMessage = `Let's sit with ${nodes.length === 1 ? 'this thought' : 'these thoughts'} for a moment: ${titles}. What about ${nodes.length === 1 ? 'it is' : 'them is'} taking up the most space right now?`;
+      }
+      setMessages([{ role: "assistant", content: initialMessage }]);
       setInput("");
     } else {
       if (esRef.current) {
@@ -35,7 +41,7 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
         esRef.current = null;
       }
     }
-  }, [nodes]);
+  }, [nodeIds]);
 
   const send = async () => {
     const t = input.trim();
@@ -46,9 +52,14 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
     setInput("");
     setStreaming(true);
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8081';
-    
+    const debuggerHost = Constants.expoConfig?.hostUri;
+    const localhost = debuggerHost?.split(":")[0] || "localhost";
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${localhost}:8081`;
+
+    console.log(`Connecting to SSE at: ${apiUrl}/api/coach`);
+
     const es = new EventSource(`${apiUrl}/api/coach`, {
+
       headers: { "Content-Type": "application/json" },
       method: "POST",
       body: JSON.stringify({
@@ -57,7 +68,10 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
           title: node.title,
           original_thought: node.original_thought,
           mental_weight: node.mental_weight,
+          baseline_weight: node.baseline_weight,
           category: node.category,
+          control_scope: node.control_scope,
+          confidence: node.confidence,
         })),
         messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
       }),
@@ -84,8 +98,19 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
             ...prev,
             { role: "assistant", content: `✦ Weight reframed to ${w}/10 — ${chunk.args.reason}` },
           ]);
+        } else if (chunk.type === "tool" && chunk.name === "classifyNode") {
+          const { nodeId, category, mental_weight, reason } = chunk.args;
+          onClassify(nodeId, category, mental_weight, 1.0);
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `✦ Finalized: ${category} @ ${mental_weight}/10 — ${reason}` },
+          ]);
         } else if (chunk.type === "error") {
           console.error("Coach error:", chunk.message);
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `⚠️ Coach error: ${chunk.message}` },
+          ]);
           es.close();
           setStreaming(false);
         }
@@ -95,7 +120,13 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
     });
 
     es.addEventListener("error", (err) => {
-      console.error("SSE Error:", err);
+      console.error("SSE Error:", JSON.stringify(err));
+      // Try to extract more info if available
+      const msg = err.message || "Could not connect to the coach service.";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `⚠️ Error: ${msg}. Please check if the server is running and OPENROUTER_API_KEY is set.` },
+      ]);
       es.close();
       setStreaming(false);
     });
@@ -121,6 +152,7 @@ export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
                 <View key={node.id} style={[styles.weightBadge, { 
                   backgroundColor: CATEGORY_BG[node.category],
                   borderColor: CATEGORY_FG[node.category],
+                  borderStyle: node.confidence < 0.95 ? 'dashed' : 'solid',
                 }]}>
                   <Text style={[styles.weightText, { color: CATEGORY_FG[node.category] }]}>
                     {node.mental_weight}

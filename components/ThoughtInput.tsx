@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, TextInput, Pressable, StyleSheet, Text, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from "react-native";
 import { Sparkles, X, ArrowUp } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Constants from "expo-constants";
 import type { Category } from "../lib/categorize";
 
 type SiftedNode = {
@@ -9,6 +10,10 @@ type SiftedNode = {
   original_thought: string;
   category: Category;
   mental_weight: number;
+  baseline_weight: number;
+  confidence: number;
+  control_scope: "control" | "influence" | "chaos";
+  clarifying_questions?: string[];
 };
 
 type Props = {
@@ -33,9 +38,12 @@ export function ThoughtInput({ onSingleThought, onSifted }: Props) {
     if (!t) return;
     setLoading(true);
     try {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8081';
-      
+      const debuggerHost = Constants.expoConfig?.hostUri;
+      const localhost = debuggerHost?.split(":")[0] || "localhost";
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${localhost}:8081`;
+
       const res = await fetch(`${apiUrl}/api/sift`, {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: t }),

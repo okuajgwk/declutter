@@ -8,6 +8,42 @@ export function bubbleSize(weight: number): number {
   return 44 + w * 14;
 }
 
+const CONTROL_OPACITY = {
+  control: 1,
+  influence: 0.92,
+  chaos: 0.82,
+} as const;
+
+const CALM_FG: Record<string, string> = {
+  sage: "#5D9E9A",
+  slate: "#6B7A90",
+  rose: "#B77A8E",
+  amber: "#B7945B",
+  lavender: "#8B7BB5",
+};
+
+const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+
+const hexToRgb = (hex: string) => {
+  const normalized = hex.replace("#", "");
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return { r, g, b };
+};
+
+const rgbToHex = (r: number, g: number, b: number) => {
+  const toHex = (v: number) => v.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const mixColor = (from: string, to: string, t: number) => {
+  const a = hexToRgb(from);
+  const b = hexToRgb(to);
+  const mix = (start: number, end: number) => Math.round(start + (end - start) * t);
+  return rgbToHex(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b));
+};
+
 type Props = {
   bubbles: CognitiveNode[];
   setBubbles: React.Dispatch<React.SetStateAction<CognitiveNode[]>>;
@@ -179,6 +215,9 @@ function BubbleItem({
 
   const size = bubbleSize(node.mental_weight);
   const heavy = node.mental_weight >= 7;
+  const calmTarget = CALM_FG[node.category] || CATEGORY_FG[node.category];
+  const deflationProgress = clamp(1 - node.mental_weight / Math.max(1, node.baseline_weight));
+  const borderTone = mixColor(CATEGORY_FG[node.category], calmTarget, deflationProgress);
 
   return (
     <View
@@ -191,10 +230,11 @@ function BubbleItem({
           width: size,
           height: size,
           backgroundColor: isSelected ? 'rgba(0,0,0,0.05)' : 'transparent',
-          borderColor: CATEGORY_FG[node.category],
-          borderWidth: isSelected ? 3 : 1.5,
-          borderStyle: isSelected ? 'solid' : 'dashed',
-          shadowColor: heavy ? CATEGORY_FG[node.category] : "#000",
+          borderColor: borderTone,
+          borderWidth: node.confidence < 0.95 ? 1.5 : 2,
+          borderStyle: node.confidence < 0.95 ? 'dashed' : 'solid',
+          opacity: CONTROL_OPACITY[node.control_scope],
+           shadowColor: heavy ? borderTone : "#000",
           shadowOffset: { width: 0, height: heavy ? 6 : 4 },
           shadowOpacity: heavy ? 0.3 : 0.15,
           shadowRadius: heavy ? 12 : 8,
@@ -202,13 +242,29 @@ function BubbleItem({
         }
       ]}
     >
+      {isSelected && (
+          <View style={[
+            styles.selectionRing,
+            {
+              width: size + 10,
+              height: size + 10,
+              borderRadius: (size + 10) / 2,
+              borderColor: borderTone,
+              shadowColor: borderTone,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.35,
+              shadowRadius: 8,
+              elevation: 6,
+            }
+          ]} />
+      )}
       <View style={styles.innerBubble}>
         <Text 
           numberOfLines={4} 
           style={[
             styles.bubbleText, 
             { 
-              color: CATEGORY_FG[node.category],
+              color: borderTone,
               fontSize: Math.max(10, Math.min(14, size / 11)),
               fontWeight: isSelected ? '700' : '500'
             }
@@ -238,6 +294,11 @@ const styles = StyleSheet.create({
     padding: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  selectionRing: {
+    position: 'absolute',
+    borderWidth: 2,
+    opacity: 0.5,
   },
   bubbleText: {
     textAlign: 'center',
