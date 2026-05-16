@@ -7,12 +7,12 @@ import { CATEGORY_BG, CATEGORY_FG } from "../lib/categorize";
 import type { CognitiveNode, CoachMessage } from "../lib/types";
 
 type Props = {
-  node: CognitiveNode | null;
+  nodes: CognitiveNode[];
   onClose: () => void;
   onWeightChange: (id: string, newWeight: number) => void;
 };
 
-export function CoachSheet({ node, onClose, onWeightChange }: Props) {
+export function CoachSheet({ nodes, onClose, onWeightChange }: Props) {
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -20,11 +20,12 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    if (node) {
+    if (nodes.length > 0) {
+      const titles = nodes.map(n => `"${n.title}"`).join(", ");
       setMessages([
         {
           role: "assistant",
-          content: `Let's sit with "${node.title}" for a moment. You marked it ${node.mental_weight}/10. What about this is taking up the most space right now?`,
+          content: `Let's sit with ${nodes.length === 1 ? 'this thought' : 'these thoughts'} for a moment: ${titles}. What about ${nodes.length === 1 ? 'it is' : 'them is'} taking up the most space right now?`,
         },
       ]);
       setInput("");
@@ -34,11 +35,11 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
         esRef.current = null;
       }
     }
-  }, [node]);
+  }, [nodes]);
 
   const send = async () => {
     const t = input.trim();
-    if (!t || streaming || !node) return;
+    if (!t || streaming || nodes.length === 0) return;
     
     const next: CoachMessage[] = [...messages, { role: "user", content: t }, { role: "assistant", content: "" }];
     setMessages(next);
@@ -51,13 +52,13 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
       headers: { "Content-Type": "application/json" },
       method: "POST",
       body: JSON.stringify({
-        node: {
+        nodes: nodes.map(node => ({
           id: node.id,
           title: node.title,
           original_thought: node.original_thought,
           mental_weight: node.mental_weight,
           category: node.category,
-        },
+        })),
         messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
       }),
     });
@@ -77,7 +78,8 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
           });
         } else if (chunk.type === "tool" && chunk.name === "updateNodeWeight") {
           const w = chunk.args.newWeight;
-          onWeightChange(node.id, w);
+          const id = chunk.args.nodeId;
+          onWeightChange(id, w);
           setMessages((prev) => [
             ...prev,
             { role: "assistant", content: `✦ Weight reframed to ${w}/10 — ${chunk.args.reason}` },
@@ -103,10 +105,10 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
     });
   };
 
-  if (!node) return null;
+  if (nodes.length === 0) return null;
 
   return (
-    <Modal visible={!!node} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <Modal visible={nodes.length > 0} animationType="slide" transparent={true} onRequestClose={onClose}>
       <KeyboardAvoidingView 
         style={styles.modalOverlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -114,17 +116,25 @@ export function CoachSheet({ node, onClose, onWeightChange }: Props) {
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheetContent}>
           <View style={styles.header}>
-            <View style={[styles.weightBadge, { 
-              backgroundColor: CATEGORY_BG[node.category],
-              borderColor: CATEGORY_FG[node.category],
-            }]}>
-              <Text style={[styles.weightText, { color: CATEGORY_FG[node.category] }]}>
-                {node.mental_weight}
-              </Text>
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgesScroll} contentContainerStyle={styles.badgesContainer}>
+              {nodes.map(node => (
+                <View key={node.id} style={[styles.weightBadge, { 
+                  backgroundColor: CATEGORY_BG[node.category],
+                  borderColor: CATEGORY_FG[node.category],
+                }]}>
+                  <Text style={[styles.weightText, { color: CATEGORY_FG[node.category] }]}>
+                    {node.mental_weight}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1}>{node.title}</Text>
-              <Text style={styles.headerSubtitle} numberOfLines={1}>{node.original_thought}</Text>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {nodes.length === 1 ? nodes[0].title : `${nodes.length} Thoughts Selected`}
+              </Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>
+                {nodes.length === 1 ? nodes[0].original_thought : nodes.map(n => n.title).join(", ")}
+              </Text>
             </View>
           </View>
 
@@ -208,10 +218,18 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
     gap: 12,
   },
+  badgesScroll: {
+    flexGrow: 0,
+    maxWidth: 120,
+  },
+  badgesContainer: {
+    gap: 4,
+    paddingRight: 8,
+  },
   weightBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     justifyContent: 'center',
@@ -219,7 +237,7 @@ const styles = StyleSheet.create({
   },
   weightText: {
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
   },
   headerTextContainer: {
     flex: 1,

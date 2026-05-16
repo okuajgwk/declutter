@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BubbleField } from "../../components/BubbleField";
 import { ThoughtInput } from "../../components/ThoughtInput";
@@ -7,6 +7,7 @@ import { CoachSheet } from "../../components/CoachSheet";
 import { categorize, type Category } from "../../lib/categorize";
 import type { CognitiveNode } from "../../lib/types";
 import { StatusBar } from "expo-status-bar";
+import { MessageCircle } from "lucide-react-native";
 
 function makeNode(partial: {
   title: string;
@@ -36,7 +37,8 @@ function makeNode(partial: {
 
 export default function Index() {
   const [bubbles, setBubbles] = useState<CognitiveNode[]>([]);
-  const [selected, setSelected] = useState<CognitiveNode | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isCoachOpen, setIsCoachOpen] = useState(false);
 
   const addSingle = (text: string) => {
     const cat = categorize(text);
@@ -57,8 +59,22 @@ export default function Index() {
 
   const updateWeight = (id: string, newWeight: number) => {
     setBubbles((prev) => prev.map((b) => (b.id === id ? { ...b, mental_weight: newWeight } : b)));
-    setSelected((s) => (s && s.id === id ? { ...s, mental_weight: newWeight } : s));
   };
+
+  const toggleSelect = (node: CognitiveNode) => {
+    setSelectedIds((prev) => 
+      prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id]
+    );
+  };
+
+  const openCoach = () => setIsCoachOpen(true);
+  
+  const closeCoach = () => {
+    setIsCoachOpen(false);
+    setSelectedIds([]); // Optionally clear selection when closing coach
+  };
+
+  const selectedNodes = bubbles.filter(b => selectedIds.includes(b.id));
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -76,16 +92,30 @@ export default function Index() {
         bubbles={bubbles}
         setBubbles={setBubbles}
         bottomInset={140}
-        onSelect={(n) => setSelected(n)}
+        selectedIds={selectedIds}
+        onSelect={toggleSelect}
       />
 
       <ThoughtInput onSingleThought={addSingle} onSifted={addSifted} />
 
-      <CoachSheet
-        node={selected}
-        onClose={() => setSelected(null)}
-        onWeightChange={updateWeight}
-      />
+      {selectedIds.length > 0 && !isCoachOpen && (
+        <View style={styles.floatingActionContainer} pointerEvents="box-none">
+          <Pressable style={styles.discussButton} onPress={openCoach}>
+            <MessageCircle color="#FFF" size={20} />
+            <Text style={styles.discussButtonText}>
+              Discuss {selectedIds.length} thought{selectedIds.length !== 1 ? 's' : ''}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {isCoachOpen && (
+        <CoachSheet
+          nodes={selectedNodes}
+          onClose={closeCoach}
+          onWeightChange={updateWeight}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -118,5 +148,32 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     maxWidth: 250,
+  },
+  floatingActionContainer: {
+    position: 'absolute',
+    bottom: 120,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  discussButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  discussButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 15,
   }
 });

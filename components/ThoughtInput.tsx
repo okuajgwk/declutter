@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, TextInput, Pressable, StyleSheet, Text, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from "react-native";
-import { Sparkles, X } from "lucide-react-native";
+import { Sparkles, X, ArrowUp } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { Category } from "../lib/categorize";
 
@@ -86,6 +86,13 @@ export function ThoughtInput({ onSingleThought, onSifted }: Props) {
               onPress={() => setMode("dump")}
             >
               <Sparkles size={20} color="#6B7280" />
+            </Pressable>
+            <Pressable
+              style={[styles.sparkleButton, !value.trim() && { opacity: 0.5 }]}
+              onPress={handleQuick}
+              disabled={!value.trim()}
+            >
+              <ArrowUp size={20} color="#6B7280" />
             </Pressable>
           </View>
         ) : (
