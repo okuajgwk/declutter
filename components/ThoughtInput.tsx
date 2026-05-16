@@ -71,7 +71,7 @@ export function ThoughtInput({ onSingleThought, onSifted }: Props) {
       pointerEvents="box-none"
     >
       <LinearGradient
-        colors={['transparent', 'rgba(255,255,255,0.8)', 'rgba(255,255,255,1)']}
+        colors={['rgba(252,249,242,0)', 'rgba(252,249,242,0.8)', 'rgba(252,249,242,1)']}
         style={styles.gradient}
         pointerEvents="none"
       />

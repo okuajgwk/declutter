@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Modal } from "react-native";
+import { BlurView } from "expo-blur";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BubbleField } from "../../components/BubbleField";
 import { ThoughtInput } from "../../components/ThoughtInput";
@@ -7,7 +8,7 @@ import { CoachSheet } from "../../components/CoachSheet";
 import { categorize, type Category } from "../../lib/categorize";
 import type { CognitiveNode } from "../../lib/types";
 import { StatusBar } from "expo-status-bar";
-import { MessageCircle } from "lucide-react-native";
+import { MessageCircle, Plus } from "lucide-react-native";
 
 function makeNode(partial: {
   title: string;
@@ -45,6 +46,7 @@ export default function Index() {
   const [isCoachOpen, setIsCoachOpen] = useState(false);
   const [aqScore, setAqScore] = useState(50);
   const [pivotCompleted, setPivotCompleted] = useState(false);
+  const [isTipOpen, setIsTipOpen] = useState(false);
 
 const addSingle = (text: string) => {
   const cat = categorize(text);
@@ -131,33 +133,49 @@ const addSingle = (text: string) => {
         bottomInset={140}
         selectedIds={selectedIds}
         onSelect={toggleSelect}
+        onPop={(id) => {
+          setBubbles(prev => prev.filter(b => b.id !== id));
+          setSelectedIds(prev => prev.filter(sid => sid !== id));
+        }}
       />
 
       <ThoughtInput onSingleThought={addSingle} onSifted={addSifted} />
 
-      <View style={styles.pivotContainer} pointerEvents="box-none">
-        <Pressable
-          style={[styles.pivotCard, pivotCompleted && styles.pivotCardDone]}
-          onPress={() => {
-            if (!pivotCompleted) {
-              setPivotCompleted(true);
-              setAqScore((prevScore) => Math.min(100, prevScore + 1));
-            }
-          }}
-        >
-          <Text style={styles.pivotTitle}>Daily micro-pivot</Text>
-          <Text style={styles.pivotText}>Take a different route for one errand today.</Text>
-          <Text style={styles.pivotAction}>{pivotCompleted ? "Completed" : "Tap to complete"}</Text>
-        </Pressable>
-      </View>
+      <Pressable 
+        style={styles.tipHandle} 
+        onPress={() => setIsTipOpen(true)}
+      >
+        <Text style={styles.tipHandleText}>💡 Tip</Text>
+      </Pressable>
+
+      <Modal visible={isTipOpen} animationType="fade" transparent={true} onRequestClose={() => setIsTipOpen(false)}>
+        <BlurView intensity={40} tint="light" style={styles.blurContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsTipOpen(false)} />
+          <View pointerEvents="box-none" style={styles.pivotModalCenter}>
+            <Pressable
+              style={[styles.pivotCard, pivotCompleted && styles.pivotCardDone]}
+              onPress={() => {
+                if (!pivotCompleted) {
+                  setPivotCompleted(true);
+                  setAqScore((prevScore) => Math.min(100, prevScore + 1));
+                }
+              }}
+            >
+              <Text style={styles.pivotTitle}>DAILY MICRO-PIVOT</Text>
+              <Text style={styles.pivotText}>Take a different route for one errand today.</Text>
+              <Text style={styles.pivotAction}>{pivotCompleted ? "Completed" : "Tap to complete"}</Text>
+            </Pressable>
+          </View>
+        </BlurView>
+      </Modal>
 
       {selectedIds.length > 0 && !isCoachOpen && (
-        <View style={styles.floatingActionContainer} pointerEvents="box-none">
-          <Pressable style={styles.discussButton} onPress={openCoach}>
-            <MessageCircle color="#FFF" size={20} />
-            <Text style={styles.discussButtonText}>
-              Discuss {selectedIds.length} thought{selectedIds.length !== 1 ? 's' : ''}
-            </Text>
+        <View style={styles.discussActionContainer} pointerEvents="box-none">
+          <Pressable style={styles.discussButtonSide} onPress={openCoach}>
+            <Plus color="#FFF" size={24} />
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{selectedIds.length}</Text>
+            </View>
           </Pressable>
         </View>
       )}
@@ -177,7 +195,7 @@ const addSingle = (text: string) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FCF9F2',
   },
   header: {
     position: 'absolute',
@@ -226,41 +244,81 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 250,
   },
-  floatingActionContainer: {
+  discussActionContainer: {
     position: 'absolute',
-    bottom: 120,
-    left: 0,
     right: 0,
+    top: 170,
     alignItems: 'center',
     zIndex: 20,
   },
-  discussButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  discussButtonSide: {
     backgroundColor: '#111827',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 999,
-    gap: 8,
+    width: 48,
+    height: 48,
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOffset: { width: -2, height: 4 },
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 5,
   },
-  discussButtonText: {
-    color: '#FFF',
-    fontWeight: '600',
-    fontSize: 15,
-  }
-  ,
-  pivotContainer: {
+  badge: {
     position: 'absolute',
-    bottom: 190,
-    left: 0,
-    right: 0,
+    top: -4,
+    left: 2,
+    backgroundColor: '#D6CDBA',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 15,
+    borderWidth: 2,
+    borderColor: '#FCF9F2',
+  },
+  badgeText: {
+    color: '#111827',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  tipHandle: {
+    position: 'absolute',
+    right: 0,
+    top: 110,
+    backgroundColor: '#FCF9F2',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderWidth: 2,
+    borderColor: '#D6CDBA',
+    borderRightWidth: 0,
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: '#D6CDBA',
+    shadowOffset: { width: -2, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+  },
+  tipHandleText: {
+    color: '#78716C',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  blurContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pivotModalCenter: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 10,
   },
   pivotCard: {
     backgroundColor: '#F9FAFB',

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, LayoutChangeEvent, PanResponder } from "react-native";
+import { View, Text, StyleSheet, LayoutChangeEvent, PanResponder, Animated } from "react-native";
 import { CATEGORY_BG, CATEGORY_FG } from "../lib/categorize";
 import type { CognitiveNode } from "../lib/types";
 
@@ -50,13 +50,16 @@ type Props = {
   bottomInset: number;
   selectedIds: string[];
   onSelect: (node: CognitiveNode) => void;
+  onPop?: (id: string) => void;
 };
 
-export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onSelect }: Props) {
+export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onSelect, onPop }: Props) {
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const rafRef = useRef<number | undefined>(undefined);
   const lastTimeRef = useRef<number>(performance.now());
   const dragState = useRef<Record<string, { startX: number, startY: number, curX: number, curY: number, isDragging: boolean }>>({});
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
 
   useEffect(() => {
     const tick = (now: number) => {
@@ -75,6 +78,7 @@ export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onS
         const next = prev.map((b) => ({ ...b }));
 
         for (const b of next) {
+          const isSel = selectedIdsRef.current.includes(b.id);
           const drag = dragState.current[b.id];
           if (drag && drag.isDragging) {
             b.x = drag.curX;
@@ -83,9 +87,14 @@ export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onS
             b.vy = 0;
             continue;
           }
+          if (isSel) {
+            b.vx = 0;
+            b.vy = 0;
+            continue;
+          }
 
           const r = bubbleSize(b.mental_weight) / 2;
-          b.phase += dt * 0.3;
+          b.phase += dt * 0.5;
           b.vx += Math.sin(b.phase + b.x * 0.001) * 0.6 * dt;
           b.vy += Math.cos(b.phase * 0.8 + b.y * 0.001) * 0.6 * dt;
           b.vx *= 0.92;
@@ -106,30 +115,46 @@ export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onS
         for (let i = 0; i < next.length; i++) {
           for (let j = i + 1; j < next.length; j++) {
             const a = next[i], c = next[j];
-            const dragA = dragState.current[a.id]?.isDragging;
-            const dragC = dragState.current[c.id]?.isDragging;
+            const dragA = dragState.current[a.id]?.isDragging || selectedIdsRef.current.includes(a.id);
+            const dragC = dragState.current[c.id]?.isDragging || selectedIdsRef.current.includes(c.id);
             
             const dx = c.x - a.x;
             const dy = c.y - a.y;
-            const dist = Math.hypot(dx, dy) || 0.001;
-            const min = bubbleSize(a.mental_weight) / 2 + bubbleSize(c.mental_weight) / 2 + 6;
+            const dist = Math.hypot(dx, dy);
+            const minDist = bubbleSize(a.mental_weight)/2 + bubbleSize(c.mental_weight)/2 + 4; // added 4px padding
             
-            if (dist < min) {
-              const overlap = (min - dist) / 2;
+            if (dist < minDist && dist > 0) {
+              const overlap = minDist - dist;
+              const bounce = 0.5;
+              
               const nx = dx / dist;
               const ny = dy / dist;
               
-              if (!dragA) {
+              if (!dragA && !dragC) {
+                a.x -= nx * overlap * 0.5;
+                a.y -= ny * overlap * 0.5;
+                c.x += nx * overlap * 0.5;
+                c.y += ny * overlap * 0.5;
+                
+                a.vx -= nx * bounce;
+                a.vy -= ny * bounce;
+                c.vx += nx * bounce;
+                c.vy += ny * bounce;
+              } else if (!dragA && dragC) {
                 a.x -= nx * overlap;
                 a.y -= ny * overlap;
-                a.vx -= nx * 0.3;
-                a.vy -= ny * 0.3;
-              }
-              if (!dragC) {
+                a.vx -= nx * bounce * 2;
+                a.vy -= ny * bounce * 2;
+              } else if (dragA && !dragC) {
                 c.x += nx * overlap;
                 c.y += ny * overlap;
-                c.vx += nx * 0.3;
-                c.vy += ny * 0.3;
+                c.vx += nx * bounce * 2;
+                c.vy += ny * bounce * 2;
+              } else {
+                a.x -= nx * overlap * 0.5;
+                a.y -= ny * overlap * 0.5;
+                c.x += nx * overlap * 0.5;
+                c.y += ny * overlap * 0.5;
               }
             }
           }
@@ -158,6 +183,7 @@ export function BubbleField({ bubbles, setBubbles, bottomInset, selectedIds, onS
           node={b}
           isSelected={selectedIds.includes(b.id)}
           onSelect={onSelect}
+          onPop={onPop}
           dragState={dragState}
         />
       ))}
@@ -169,49 +195,111 @@ function BubbleItem({
   node, 
   isSelected, 
   onSelect, 
+  onPop,
   dragState 
 }: { 
   node: CognitiveNode; 
   isSelected: boolean; 
   onSelect: (n: CognitiveNode) => void;
+  onPop?: (id: string) => void;
   dragState: React.MutableRefObject<Record<string, { startX: number, startY: number, curX: number, curY: number, isDragging: boolean }>>
 }) {
+  const popTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  
+  const isSelectedRef = useRef(isSelected);
+  isSelectedRef.current = isSelected;
+  const nodeRef = useRef(node);
+  nodeRef.current = node;
+
+  const clearPopTimer = () => {
+    if (popTimer.current) {
+      clearTimeout(popTimer.current);
+      popTimer.current = null;
+      if (popAnimRef.current) {
+        popAnimRef.current.stop();
+        popAnimRef.current = null;
+      }
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+      shakeAnim.setValue(0);
+    }
+  };
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, g) => Math.hypot(g.dx, g.dy) > 5,
       onPanResponderGrant: () => {
-        dragState.current[node.id] = {
-          startX: node.x,
-          startY: node.y,
-          curX: node.x,
-          curY: node.y,
-          isDragging: true
-        };
+        if (!isSelectedRef.current) {
+          dragState.current[node.id] = {
+            startX: nodeRef.current.x,
+            startY: nodeRef.current.y,
+            curX: nodeRef.current.x,
+            curY: nodeRef.current.y,
+            isDragging: true
+          };
+        }
+        if (onPop) {
+          popAnimRef.current = Animated.parallel([
+            Animated.timing(scaleAnim, {
+              toValue: 1.5,
+              duration: 3000,
+              useNativeDriver: true,
+            }),
+            Animated.loop(
+              Animated.sequence([
+                Animated.timing(shakeAnim, { toValue: 1, duration: 40, useNativeDriver: true }),
+                Animated.timing(shakeAnim, { toValue: -1, duration: 80, useNativeDriver: true }),
+                Animated.timing(shakeAnim, { toValue: 0, duration: 40, useNativeDriver: true }),
+              ])
+            )
+          ]);
+          popAnimRef.current.start();
+
+          popTimer.current = setTimeout(() => {
+            onPop(node.id);
+          }, 3000);
+        }
       },
       onPanResponderMove: (_, g) => {
-        const state = dragState.current[node.id];
-        if (state) {
-          state.curX = state.startX + g.dx;
-          state.curY = state.startY + g.dy;
+        if (Math.hypot(g.dx, g.dy) > 10) {
+          clearPopTimer();
+        }
+        if (!isSelectedRef.current) {
+          const state = dragState.current[node.id];
+          if (state) {
+            state.curX = state.startX + g.dx;
+            state.curY = state.startY + g.dy;
+          }
         }
       },
       onPanResponderRelease: (_, g) => {
+        clearPopTimer();
         if (dragState.current[node.id]) {
           dragState.current[node.id].isDragging = false;
         }
         // If it was a small movement, consider it a tap
         if (Math.hypot(g.dx, g.dy) < 5) {
-          onSelect(node);
+          onSelect(nodeRef.current);
         }
       },
       onPanResponderTerminate: () => {
+        clearPopTimer();
         if (dragState.current[node.id]) {
           dragState.current[node.id].isDragging = false;
         }
       }
     })
   ).current;
+
+  useEffect(() => {
+    return clearPopTimer;
+  }, []);
 
   const size = bubbleSize(node.mental_weight);
   const heavy = node.mental_weight >= 7;
@@ -220,7 +308,7 @@ function BubbleItem({
   const borderTone = mixColor(CATEGORY_FG[node.category], calmTarget, deflationProgress);
 
   return (
-    <View
+    <Animated.View
       {...panResponder.panHandlers}
       style={[
         styles.bubbleBase,
@@ -234,11 +322,20 @@ function BubbleItem({
           borderWidth: 2,
           borderStyle: 'solid',
           opacity: CONTROL_OPACITY[node.control_scope],
-           shadowColor: heavy ? borderTone : "#000",
+          shadowColor: heavy ? borderTone : "#000",
           shadowOffset: { width: 0, height: heavy ? 6 : 4 },
           shadowOpacity: heavy ? 0.3 : 0.15,
           shadowRadius: heavy ? 12 : 8,
           elevation: heavy ? 10 : 5,
+          transform: [
+            { scale: scaleAnim },
+            { 
+              translateX: shakeAnim.interpolate({ 
+                inputRange: [-1, 1], 
+                outputRange: [-3, 3] 
+              }) 
+            }
+          ]
         }
       ]}
     >
@@ -273,7 +370,7 @@ function BubbleItem({
           {node.title}
         </Text>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

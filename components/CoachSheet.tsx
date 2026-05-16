@@ -120,7 +120,7 @@ export function CoachSheet({ nodes, onClose, onWeightChange, onClassify }: Props
     es.addEventListener("error", (err) => {
       console.error("SSE Error:", JSON.stringify(err));
       // Try to extract more info if available
-      const msg = err.message || "Could not connect to the coach service.";
+      const msg = (err as any).message || "Could not connect to the coach service.";
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `⚠️ Error: ${msg}. Please check if the server is running and OPENROUTER_API_KEY is set.` },

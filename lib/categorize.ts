@@ -34,17 +34,17 @@ export function categorize(text: string): Category {
 }
 
 export const CATEGORY_BG: Record<Category, string> = {
-  sage: "#CBE2CD",
-  slate: "#C9D4DF",
-  rose: "#F4D9D9",
-  amber: "#FCE0C3",
-  lavender: "#E0DBF6",
+  sage: "#FEF3C7",
+  slate: "#FEF08A",
+  rose: "#FDE68A",
+  amber: "#FFF8B5",
+  lavender: "#FFF3B0",
 };
 
 export const CATEGORY_FG: Record<Category, string> = {
-  sage: "#2F4F2F",
-  slate: "#3A4F60",
-  rose: "#6E3636",
-  amber: "#704B26",
-  lavender: "#4C4073",
+  sage: "#92400E",
+  slate: "#854D0E",
+  rose: "#9A3412",
+  amber: "#A16207",
+  lavender: "#713F12",
 };
